@@ -1,0 +1,716 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="format-detection" content="telephone=no">
+<meta name="theme-color" content="#FF7BA0">
+<title>小账本</title>
+<style>
+  /* 微信内置浏览器（老内核）兼容版：不用 CSS 变量、不用 gap、不用 sticky */
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body {
+    font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: #FFF5F7;
+    color: #4A3B41;
+  }
+  .app {
+    width: 100%; max-width: 520px; min-height: 100vh;
+    margin: 0 auto; background: #FFF5F7;
+    box-shadow: 0 0 40px rgba(200,110,140,.12);
+  }
+  /* 顶部：fixed，带 fallback 高度 */
+  .navbar {
+    position: fixed; top: 0; left: 50%; -webkit-transform: translateX(-50%); transform: translateX(-50%);
+    width: 100%; max-width: 520px; z-index: 10;
+    background: #FF7BA0; color: #fff;
+    padding: 14px 18px; text-align: center;
+    font-size: 18px; font-weight: 600;
+    padding-top: calc(env(safe-area-inset-top, 0px) + 14px);
+  }
+  /* 内容：body 自然滚动 */
+  .content {
+    padding: 66px 14px 100px;
+    padding-top: calc(env(safe-area-inset-top, 0px) + 72px);
+    padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 100px);
+  }
+  .page { display: none; }
+  .page.on { display: block; }
+  .card {
+    background: #fff; border-radius: 18px; padding: 18px; margin-bottom: 12px;
+    box-shadow: 0 4px 14px rgba(255,123,160,.10);
+  }
+  .card-title { font-size: 15px; font-weight: 600; margin-bottom: 10px; }
+  .empty { color: #C0AEB5; text-align: center; padding: 18px 0 8px; font-size: 13px; }
+  .amt-in { color: #1FB57A; }
+  .amt-out { color: #FF6B9A; }
+  /* 结余卡 */
+  .balance-card {
+    background: -webkit-linear-gradient(135deg, #FF9DB8, #FF6B9A);
+    background: linear-gradient(135deg, #FF9DB8, #FF6B9A);
+    border-radius: 20px; padding: 22px 20px; color: #fff; margin-bottom: 12px;
+    box-shadow: 0 10px 24px rgba(255,107,154,.32);
+  }
+  .balance-label { font-size: 13px; opacity: .9; }
+  .balance-num { font-size: 38px; font-weight: 700; margin-top: 6px; letter-spacing: 1px; }
+  .balance-tip { font-size: 15px; font-weight: 600; margin-top: 8px; text-decoration: underline; cursor: pointer; }
+  .balance-sub { font-size: 12px; opacity: .88; margin-top: 8px; }
+  /* 类型切换 */
+  .type-row { display: flex; margin-bottom: 4px; }
+  .type-btn {
+    -webkit-flex: 1; flex: 1; text-align: center; padding: 10px 0; border-radius: 999px;
+    background: #FFF0F5; color: #B99AA5; font-size: 15px; font-weight: 600;
+    cursor: pointer; transition: all .15s; -webkit-user-select: none; user-select: none;
+  }
+  .type-btn + .type-btn { margin-left: 10px; }
+  .type-on { color: #fff !important; }
+  .type-on.t-expense { background: #FF6B9A !important; }
+  .type-on.t-income { background: #1FB57A !important; }
+  /* 填空行 */
+  .field { display: flex; -webkit-align-items: center; align-items: center; border-bottom: 1px solid #FFE4EC; padding: 13px 0 9px; }
+  .field-label { width: 62px; color: #B99AA5; font-size: 14px; -webkit-flex-shrink: 0; flex-shrink: 0; }
+  .field input {
+    -webkit-flex: 1; flex: 1; border: none; outline: none; font-size: 16px;
+    background: transparent; color: #4A3B41; font-family: inherit; min-width: 0;
+    -webkit-appearance: none; appearance: none;
+  }
+  .field input::placeholder { color: #D8C4CC; }
+  .chips { display: flex; -webkit-flex-wrap: wrap; flex-wrap: wrap; margin: 8px 0 4px; }
+  .chip {
+    background: #FFF0F5; color: #E2739B; border-radius: 999px;
+    padding: 6px 15px; font-size: 13px; margin: 0 8px 8px 0;
+    cursor: pointer; -webkit-user-select: none; user-select: none;
+  }
+  .chip-on { background: #FF6B9A; color: #fff; }
+  .save-btn {
+    margin-top: 10px; width: 100%; border: none; font-family: inherit;
+    background: #FF6B9A; color: #fff; font-size: 16px; font-weight: 600;
+    border-radius: 999px; padding: 13px 0; cursor: pointer;
+    background: -webkit-linear-gradient(135deg, #FF9DB8, #FF6B9A);
+    background: linear-gradient(135deg, #FF9DB8, #FF6B9A);
+    box-shadow: 0 8px 18px rgba(255,107,154,.28);
+  }
+  .save-btn:active { -webkit-transform: scale(.98); transform: scale(.98); }
+  /* 记录行 */
+  .record { display: flex; -webkit-align-items: center; align-items: center; padding: 10px 0; border-bottom: 1px solid #FFF0F5; }
+  .record:last-child { border-bottom: none; }
+  .record-note { -webkit-flex: 1; flex: 1; font-size: 15px; }
+  .record-main { -webkit-flex: 1; flex: 1; min-width: 0; }
+  .record-date { font-size: 12px; color: #C0AEB5; margin-top: 2px; }
+  .record-note + .record-amt { -webkit-flex-shrink: 0; flex-shrink: 0; }
+  .record-amt { font-size: 15px; font-weight: 600; margin-right: 12px; }
+  .record-del {
+    width: 24px; height: 24px; line-height: 22px; text-align: center; border-radius: 50%;
+    color: #D8C4CC; font-size: 18px; background: #FFF5F7; cursor: pointer; -webkit-flex-shrink: 0; flex-shrink: 0;
+  }
+  /* 统计页 */
+  .switch-row { text-align: center; margin-bottom: 12px; }
+  .seg { display: inline-flex; background: #FFE4EC; border-radius: 999px; padding: 4px; }
+  .seg-btn { display: inline-block; padding: 7px 30px; border-radius: 999px; color: #C08DA1; font-size: 14px; font-weight: 600; cursor: pointer; -webkit-user-select: none; user-select: none; }
+  .seg-on { background: #fff; color: #FF6B9A; box-shadow: 0 4px 10px rgba(255,107,154,.18); }
+  .range-row { text-align: center; margin-bottom: 12px; }
+  .arrow {
+    display: inline-block; width: 30px; height: 30px; line-height: 28px; text-align: center;
+    background: #fff; border-radius: 50%; color: #FF6B9A; font-size: 19px;
+    box-shadow: 0 4px 10px rgba(255,107,154,.14); cursor: pointer; -webkit-user-select: none; user-select: none;
+    margin: 0 7px; vertical-align: middle;
+  }
+  .arrow-dim { color: #E3C9D2; }
+  .range-label { display: inline-block; font-size: 15px; font-weight: 600; vertical-align: middle; }
+  .stat-card { background: #FF6B9A; box-shadow: 0 10px 24px rgba(255,107,154,.32); background: -webkit-linear-gradient(135deg, #FF9DB8, #FF6B9A); background: linear-gradient(135deg, #FF9DB8, #FF6B9A); }
+  .stat-row { display: flex; }
+  .stat-item { -webkit-flex: 1; flex: 1; text-align: center; }
+  .stat-label { font-size: 13px; color: rgba(255,255,255,.92); }
+  .stat-num { font-size: 17px; font-weight: 700; margin-top: 6px; color: #fff; word-break: break-all; }
+  .balance-strip {
+    display: flex; -webkit-align-items: center; align-items: center; -webkit-justify-content: space-between; justify-content: space-between;
+    background: #fff; border-radius: 14px; padding: 14px 16px; color: #8A7680; font-size: 14px;
+    box-shadow: 0 4px 14px rgba(255,123,160,.10);
+  }
+  .strip-num { font-size: 17px; font-weight: 700; color: #4A3B41; }
+  .strip-tip { color: #E2739B; font-size: 13px; }
+  .day-head { display: flex; -webkit-justify-content: space-between; justify-content: space-between; -webkit-align-items: center; align-items: center; padding-bottom: 6px; border-bottom: 1px solid #FFF0F5; margin-bottom: 2px; }
+  .day-title { font-size: 14px; font-weight: 600; }
+  .day-sub { font-size: 12px; }
+  .day-sub .amt-in { margin-right: 10px; }
+  .day-add {
+    display: inline-block; margin-left: 8px; padding: 1px 10px;
+    background: #FFF0F5; color: #E2739B; border-radius: 999px;
+    font-size: 11px; font-weight: 600; cursor: pointer;
+  }
+  /* 搜索 */
+  .search-row {
+    display: flex; -webkit-align-items: center; align-items: center;
+    background: #FFF5F7; border-radius: 999px; padding: 10px 16px; margin-bottom: 12px;
+  }
+  .search-row input {
+    -webkit-flex: 1; flex: 1; border: none; outline: none; background: transparent;
+    font-size: 15px; color: #4A3B41; font-family: inherit; min-width: 0;
+    -webkit-appearance: none; appearance: none;
+  }
+  .search-row input::placeholder { color: #D8C4CC; }
+  .search-clear {
+    width: 22px; height: 22px; line-height: 20px; text-align: center; border-radius: 50%;
+    background: #FFE4EC; color: #E2739B; font-size: 13px; cursor: pointer; -webkit-flex-shrink: 0; flex-shrink: 0;
+  }
+  .search-sum { font-size: 12px; color: #A8969E; padding: 8px 2px 2px; text-align: center; }
+  /* 设置页 */
+  .setting-desc { color: #A8969E; font-size: 12.5px; line-height: 1.75; margin-bottom: 12px; }
+  .amount-display { font-size: 32px; font-weight: 700; color: #FF6B9A; padding: 4px 0 14px; }
+  .amount-none { color: #D8C4CC; }
+  .btn { border-radius: 999px; font-size: 14.5px; font-weight: 600; border: none; padding: 12px 0; cursor: pointer; width: 100%; font-family: inherit; }
+  .main-btn { background: #FF6B9A; color: #fff; box-shadow: 0 8px 18px rgba(255,107,154,.28); background: -webkit-linear-gradient(135deg, #FF9DB8, #FF6B9A); background: linear-gradient(135deg, #FF9DB8, #FF6B9A); }
+  .ghost-btn { background: #FFF0F5; color: #E2739B; }
+  .danger-btn { background: #FFF0F5; color: #F2557F; }
+  .btn-row { display: flex; }
+  .btn-row .btn { -webkit-flex: 1; flex: 1; }
+  .btn-row .btn + .btn { margin-left: 10px; }
+  .edit-input {
+    width: 100%; background: #FFF5F7; border: none; outline: none; border-radius: 12px;
+    padding: 12px 14px; font-size: 17px; margin-bottom: 14px; font-family: inherit; color: #4A3B41;
+    -webkit-appearance: none; appearance: none;
+  }
+  .edit-input::placeholder { color: #D8C4CC; }
+  .foot { text-align: center; color: #D8C4CC; font-size: 12px; margin-top: 20px; line-height: 1.8; }
+  /* 底部 tab：fixed */
+  .tabbar {
+    position: fixed; bottom: 0; left: 50%; -webkit-transform: translateX(-50%); transform: translateX(-50%);
+    width: 100%; max-width: 520px; background: #fff; display: flex; z-index: 10;
+    border-top: 1px solid #FCEEF3; padding-bottom: 6px;
+    padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 6px);
+  }
+  .tab-item {
+    -webkit-flex: 1; flex: 1; text-align: center; cursor: pointer; color: #C9BEC3; font-size: 11px;
+    padding: 8px 0 6px; -webkit-user-select: none; user-select: none;
+  }
+  .tab-item svg { width: 26px; height: 26px; display: block; margin: 0 auto 3px; }
+  .tab-item.on { color: #FF6B9A; }
+  /* toast */
+  .toast {
+    position: fixed; left: 50%; bottom: 110px; -webkit-transform: translateX(-50%); transform: translateX(-50%);
+    background: rgba(60,50,55,.88); color: #fff; font-size: 13px; padding: 9px 18px;
+    border-radius: 999px; opacity: 0; transition: opacity .25s; pointer-events: none; white-space: nowrap; z-index: 99;
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 110px);
+  }
+  .toast.show { opacity: 1; }
+  /* 首次横幅 */
+  .banner {
+    background: #fff; border-radius: 14px; padding: 12px 14px; margin-bottom: 12px;
+    font-size: 13px; color: #8A7680; line-height: 1.7; box-shadow: 0 4px 14px rgba(255,123,160,.10);
+  }
+  .banner b { color: #FF6B9A; }
+  .banner .x { color: #D8C4CC; cursor: pointer; font-size: 16px; float: right; margin-left: 8px; }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="navbar" id="navbar">小账本</div>
+
+  <div class="content">
+    <!-- ========= 记账页 ========= -->
+    <div class="page on" id="page-index">
+      <div class="banner" id="wx-banner" style="display:none">
+        <span class="x" onclick="closeBanner()">✕</span>
+        <div>💡 <b>更好用的方式</b>：用 Safari 打开本页 → 分享 → 「添加到主屏幕」，以后点桌面图标直接进，全屏像 App。（本页在微信里也完全可用）</div>
+      </div>
+
+      <div class="banner" id="backup-banner" style="display:none">
+        <span class="x" onclick="closeBackupBanner()">✕</span>
+        <div>🛡️ <b>该备份啦</b>：<span id="backup-banner-text"></span>去「设置」→「导出备份」，粘到备忘录存好，这是数据唯一的保险。</div>
+      </div>
+
+      <div class="balance-card">
+        <div class="balance-label">当前结余</div>
+        <div class="balance-num" id="idx-balance">¥ 0.00</div>
+        <div class="balance-tip" id="idx-balance-tip" style="display:none" onclick="switchTab('settings')">还没设置初始金额，点我去设置 →</div>
+        <div class="balance-sub" id="idx-balance-sub"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">记一笔</div>
+        <div class="type-row">
+          <div class="type-btn t-expense type-on" id="type-expense" onclick="setType('expense')">支出</div>
+          <div class="type-btn t-income" id="type-income" onclick="setType('income')">收入</div>
+        </div>
+        <div class="field">
+          <span class="field-label">日期</span>
+          <input type="date" id="f-date" onchange="renderIndex()">
+        </div>
+        <div class="field">
+          <span class="field-label">金额</span>
+          <input type="text" inputmode="decimal" pattern="[0-9.]*" placeholder="0.00" id="f-amount">
+        </div>
+        <div class="field">
+          <span class="field-label">用途</span>
+          <input type="text" placeholder="这笔钱干了啥" id="f-note" oninput="renderChips()">
+        </div>
+        <div class="chips" id="chips"></div>
+        <button class="save-btn" onclick="saveRecord()">记 上</button>
+      </div>
+
+      <div class="card">
+        <div class="card-title" id="idx-today-title">今天</div>
+        <div id="idx-today-list"></div>
+      </div>
+    </div>
+
+    <!-- ========= 统计页 ========= -->
+    <div class="page" id="page-stats">
+      <div class="card">
+        <div class="card-title">🔍 搜一笔</div>
+        <div class="search-row">
+          <input id="search-input" type="text" placeholder="搜用途或金额，如：超市 / 25" oninput="renderSearch()">
+          <span class="search-clear" id="search-clear" style="display:none" onclick="clearSearch()">✕</span>
+        </div>
+        <div id="search-results"></div>
+      </div>
+
+      <div class="switch-row">
+        <div class="seg">
+          <span class="seg-btn seg-on" id="seg-week" onclick="setMode('week')">每周</span><span class="seg-btn" id="seg-month" onclick="setMode('month')">每月</span>
+        </div>
+      </div>
+      <div class="range-row">
+        <span class="arrow" onclick="prevPeriod()">‹</span><span class="range-label" id="range-label"></span><span class="arrow" onclick="nextPeriod()">›</span>
+      </div>
+      <div class="card stat-card">
+        <div class="stat-row">
+          <div class="stat-item"><div class="stat-label">收入</div><div class="stat-num" id="st-income">0.00</div></div>
+          <div class="stat-item"><div class="stat-label">支出</div><div class="stat-num" id="st-expense">0.00</div></div>
+          <div class="stat-item"><div class="stat-label">收支差</div><div class="stat-num" id="st-net">0.00</div></div>
+        </div>
+      </div>
+      <div class="balance-strip">
+        <span>当前总结余</span>
+        <span class="strip-num" id="st-balance"></span>
+      </div>
+      <div id="st-days"></div>
+    </div>
+
+    <!-- ========= 设置页 ========= -->
+    <div class="page" id="page-settings">
+      <div class="card">
+        <div class="card-title">初始总金额</div>
+        <div class="setting-desc">你的钱包 / 账户一开始有多少钱。结余 = 初始金额 + 累计收入 − 累计支出</div>
+        <div id="set-view">
+          <div class="amount-display" id="set-amount"></div>
+          <button class="btn main-btn" id="set-edit-btn" onclick="startEdit()">设置初始金额</button>
+        </div>
+        <div id="set-edit" style="display:none">
+          <input class="edit-input" type="text" inputmode="decimal" pattern="[0-9.]*" placeholder="请输入金额，例如 5000" id="set-input">
+          <div class="btn-row">
+            <button class="btn ghost-btn" onclick="cancelEdit()">取消</button>
+            <button class="btn main-btn" onclick="confirmEdit()">保存</button>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title">数据</div>
+        <div class="setting-desc" id="set-desc"></div>
+        <div class="btn-row">
+          <button class="btn ghost-btn" onclick="exportData()">导出备份</button>
+          <button class="btn ghost-btn" onclick="downloadBackup()">下载备份</button>
+        </div>
+        <div class="btn-row" style="margin-top:10px">
+          <button class="btn ghost-btn" onclick="showImport()">导入恢复</button>
+          <button class="btn danger-btn" onclick="clearAllData()">清空数据</button>
+        </div>
+        <div id="import-view" style="display:none">
+          <textarea class="edit-input" id="import-input" rows="6" placeholder="把之前导出备份的内容原样粘贴到这里" style="margin-top:14px"></textarea>
+          <div class="btn-row">
+            <button class="btn ghost-btn" onclick="cancelImport()">取消</button>
+            <button class="btn main-btn" onclick="confirmImport()">恢复数据</button>
+          </div>
+        </div>
+      </div>
+      <div class="foot">小账本 v1.4 · 数据保存在本设备的浏览器里<br>⚠️ 重要：删桌面图标会连数据一起删！定期导出备份到备忘录</div>
+    </div>
+  </div>
+
+  <div class="tabbar">
+    <div class="tab-item on" id="tab-index" onclick="switchTab('index')">
+      <svg viewBox="0 0 81 81" fill="none"><rect x="14" y="14" width="53" height="53" rx="14" fill="currentColor"/><text x="40.5" y="46" font-size="27" font-weight="bold" fill="#fff" text-anchor="middle" font-family="sans-serif">¥</text><rect x="26" y="56" width="29" height="4" rx="2" fill="#fff"/><rect x="26" y="63" width="18" height="4" rx="2" fill="#fff"/></svg>
+      <span>记账</span>
+    </div>
+    <div class="tab-item" id="tab-stats" onclick="switchTab('stats')">
+      <svg viewBox="0 0 81 81" fill="none"><rect x="18" y="42" width="10" height="23" rx="5" fill="currentColor"/><rect x="36" y="24" width="10" height="41" rx="5" fill="currentColor"/><rect x="54" y="34" width="10" height="31" rx="5" fill="currentColor"/><rect x="14" y="67" width="53" height="4" rx="2" fill="currentColor"/></svg>
+      <span>统计</span>
+    </div>
+    <div class="tab-item" id="tab-settings" onclick="switchTab('settings')">
+      <svg viewBox="0 0 81 81" fill="none"><rect x="14" y="21.5" width="53" height="5" rx="2.5" fill="currentColor"/><circle cx="50" cy="24" r="9" fill="currentColor"/><circle cx="50" cy="24" r="4" fill="#fff"/><rect x="14" y="38" width="53" height="5" rx="2.5" fill="currentColor"/><circle cx="30" cy="40.5" r="9" fill="currentColor"/><circle cx="30" cy="40.5" r="4" fill="#fff"/><rect x="14" y="54.5" width="53" height="5" rx="2.5" fill="currentColor"/><circle cx="58" cy="57" r="9" fill="currentColor"/><circle cx="58" cy="57" r="4" fill="#fff"/></svg>
+      <span>设置</span>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+</div>
+
+<script>
+// ================= 存储 =================
+var K_INITIAL = 'ledger_initial_amount'
+var K_RECORDS = 'ledger_records'
+var K_BANNER = 'ledger_banner_closed'
+
+function getInitial() {
+  var v = localStorage.getItem(K_INITIAL)
+  return v === null || v === '' ? null : parseFloat(v)
+}
+function getRecords() {
+  try { return JSON.parse(localStorage.getItem(K_RECORDS)) || [] } catch (e) { return [] }
+}
+function saveRecords(list) { localStorage.setItem(K_RECORDS, JSON.stringify(list)) }
+function addRecord(rec) { var l = getRecords(); l.unshift(rec); saveRecords(l) }
+function removeRecord(id) { saveRecords(getRecords().filter(function (r) { return r.id !== id })) }
+function clearStore() { localStorage.removeItem(K_RECORDS); localStorage.removeItem(K_INITIAL) }
+
+// ================= 工具 =================
+function pad(n) { return n < 10 ? '0' + n : '' + n }
+function fmt(d) { return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) }
+function todayStr() { return fmt(new Date()) }
+function addDays(s, n) { var p = s.split('-').map(Number); var d = new Date(p[0], p[1] - 1, p[2]); d.setDate(d.getDate() + n); return fmt(d) }
+function weekStart(off) {
+  var d = new Date(); var day = d.getDay() === 0 ? 7 : d.getDay()
+  return addDays(addDays(fmt(d), -(day - 1)), (off || 0) * 7)
+}
+function monthRange(off) {
+  var now = new Date(); var y = now.getFullYear(); var m = now.getMonth() + 1 + (off || 0)
+  while (m <= 0) { m += 12; y-- } while (m > 12) { m -= 12; y++ }
+  return { start: y + '-' + pad(m) + '-01', end: y + '-' + pad(m) + '-' + pad(new Date(y, m, 0).getDate()), label: y + ' 年 ' + m + ' 月' }
+}
+function totals(list) {
+  var income = 0, expense = 0
+  list.forEach(function (r) { if (r.type === 'income') income += r.amount; else expense += r.amount })
+  income = Math.round(income * 100) / 100; expense = Math.round(expense * 100) / 100
+  return { income: income, expense: expense, net: Math.round((income - expense) * 100) / 100 }
+}
+function balance() { return Math.round(((getInitial() || 0) + totals(getRecords()).net) * 100) / 100 }
+function fmtMoney(n) {
+  var neg = n < 0; var s = Math.abs(n).toFixed(2); var p = s.split('.')
+  p[0] = p[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+  return (neg ? '-' : '') + p.join('.')
+}
+var WEEK = ['', '周一', '周二', '周三', '周四', '周五', '周六', '周日']
+function weekdayOf(s) {
+  var p = s.split('-').map(Number)
+  var w = new Date(p[0], p[1] - 1, p[2]).getDay()
+  return WEEK[w === 0 ? 7 : w]
+}
+function toast(msg) {
+  var t = document.getElementById('toast'); t.textContent = msg; t.className = 'toast show'
+  clearTimeout(t._h); t._h = setTimeout(function () { t.className = 'toast' }, 1600)
+}
+function esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') }
+
+// ================= Tab =================
+var NAV = { index: '小账本', stats: '收支统计', settings: '设置' }
+function switchTab(name) {
+  ;['index', 'stats', 'settings'].forEach(function (n) {
+    document.getElementById('page-' + n).className = 'page' + (n === name ? ' on' : '')
+    document.getElementById('tab-' + n).className = 'tab-item' + (n === name ? ' on' : '')
+  })
+  document.getElementById('navbar').textContent = NAV[name]
+  window.scrollTo(0, 0)
+  if (name === 'stats') { renderStats(); renderSearch() }
+  if (name === 'index') renderIndex()
+  if (name === 'settings') renderSettings()
+}
+
+// ================= 搜索 =================
+function renderSearch() {
+  var q = document.getElementById('search-input').value.trim()
+  var clearBtn = document.getElementById('search-clear')
+  var box = document.getElementById('search-results')
+  clearBtn.style.display = q ? 'block' : 'none'
+  if (!q) { box.innerHTML = '<div class="empty">输入关键字，搜用途、金额或日期</div>'; return }
+  var list = getRecords().filter(function (r) {
+    return r.note.indexOf(q) >= 0 ||
+      String(r.amount).indexOf(q) >= 0 ||
+      r.date.indexOf(q) >= 0
+  })
+  if (!list.length) { box.innerHTML = '<div class="empty">没找到和「' + esc(q) + '」相关的记录</div>'; return }
+  var t = totals(list)
+  var html = ''
+  for (var i = 0; i < list.length; i++) {
+    var r = list[i]
+    html += '<div class="record"><div class="record-main"><div class="record-note">' + esc(r.note) + '</div>' +
+      '<div class="record-date">' + r.date + ' ' + weekdayOf(r.date) + '</div></div>' +
+      '<div class="record-amt ' + (r.type === 'income' ? 'amt-in' : 'amt-out') + '">' + (r.type === 'income' ? '+' : '-') + r.amount + '</div>' +
+      '<div class="record-del" onclick="delRecordSearch(\'' + r.id + '\')">×</div></div>'
+  }
+  html += '<div class="search-sum">共 ' + list.length + ' 笔 · 收入 ' + t.income + ' · 支出 ' + t.expense + '</div>'
+  box.innerHTML = html
+}
+function clearSearch() {
+  document.getElementById('search-input').value = ''
+  renderSearch()
+}
+function delRecordSearch(id) {
+  if (confirm('删除这笔记录？')) {
+    removeRecord(id); renderSearch(); renderIndex(); renderStats()
+  }
+}
+
+// ================= 记账页 =================
+var EXPENSE_CHIPS = ['餐饮', '交通', '购物', '奶茶', '服装', '医疗', '其他']
+var INCOME_CHIPS = ['工资', '兼职', '红包', '理财', '其他']
+var curType = 'expense'
+
+document.getElementById('f-date').value = todayStr()
+document.getElementById('f-date').max = todayStr()
+
+function closeBanner() {
+  localStorage.setItem(K_BANNER, '1')
+  document.getElementById('wx-banner').style.display = 'none'
+}
+if (localStorage.getItem(K_BANNER) !== '1') {
+  document.getElementById('wx-banner').style.display = 'block'
+}
+
+function setType(t) {
+  curType = t
+  document.getElementById('type-expense').className = 'type-btn t-expense' + (t === 'expense' ? ' type-on' : '')
+  document.getElementById('type-income').className = 'type-btn t-income' + (t === 'income' ? ' type-on' : '')
+  renderChips()
+}
+function renderChips() {
+  var chips = curType === 'expense' ? EXPENSE_CHIPS : INCOME_CHIPS
+  var note = document.getElementById('f-note').value
+  var html = ''
+  for (var i = 0; i < chips.length; i++) {
+    html += '<span class="chip' + (note === chips[i] ? ' chip-on' : '') + '" onclick="pickNote(\'' + chips[i] + '\')">' + chips[i] + '</span>'
+  }
+  document.getElementById('chips').innerHTML = html
+}
+function pickNote(c) { document.getElementById('f-note').value = c; renderChips() }
+
+function saveRecord() {
+  var amount = parseFloat(document.getElementById('f-amount').value)
+  var note = document.getElementById('f-note').value.trim()
+  if (!amount || amount <= 0) { toast('请先填写金额'); return }
+  if (!note) { toast('请填写用途'); return }
+  addRecord({
+    id: Date.now() + '' + Math.floor(Math.random() * 1000),
+    date: document.getElementById('f-date').value,
+    type: curType,
+    amount: Math.round(amount * 100) / 100,
+    note: note
+  })
+  document.getElementById('f-amount').value = ''
+  document.getElementById('f-note').value = ''
+  renderChips()
+  toast('已记上一笔 ✓')
+  renderIndex()
+}
+function delRecord(id) {
+  if (confirm('删除这笔记录？')) { removeRecord(id); renderIndex() }
+}
+
+function renderIndex() {
+  var initial = getInitial()
+  checkBackupBanner()
+  var b = balance()
+  document.getElementById('idx-balance').textContent = '¥ ' + fmtMoney(b)
+  document.getElementById('idx-balance-tip').style.display = initial === null ? '' : 'none'
+  document.getElementById('idx-balance-sub').textContent = initial === null ? '' : '初始总金额 ¥ ' + fmtMoney(initial)
+  var d = document.getElementById('f-date').value || todayStr()
+  var list = getRecords().filter(function (r) { return r.date === d })
+  var t = totals(list)
+  var title = d === todayStr() ? '今天' : d
+  document.getElementById('idx-today-title').textContent = title + ' · 支出 ¥' + t.expense + ' · 收入 ¥' + t.income
+  var box = document.getElementById('idx-today-list')
+  if (!list.length) { box.innerHTML = '<div class="empty">这天还没记过，快记一笔吧</div>'; return }
+  var html = ''
+  for (var i = 0; i < list.length; i++) {
+    var r = list[i]
+    html += '<div class="record"><div class="record-note">' + esc(r.note) + '</div>' +
+      '<div class="record-amt ' + (r.type === 'income' ? 'amt-in' : 'amt-out') + '">' + (r.type === 'income' ? '+' : '-') + r.amount + '</div>' +
+      '<div class="record-del" onclick="delRecord(\'' + r.id + '\')">×</div></div>'
+  }
+  box.innerHTML = html
+}
+
+// ================= 统计页 =================
+var stMode = 'week', stOffset = 0
+function setMode(m) {
+  stMode = m; stOffset = 0
+  document.getElementById('seg-week').className = 'seg-btn' + (m === 'week' ? ' seg-on' : '')
+  document.getElementById('seg-month').className = 'seg-btn' + (m === 'month' ? ' seg-on' : '')
+  renderStats()
+}
+function prevPeriod() { stOffset++; renderStats() }
+function nextPeriod() { if (stOffset > 0) { stOffset--; renderStats() } }
+
+function renderStats() {
+  var records = getRecords(), start, end, label
+  if (stMode === 'week') {
+    start = weekStart(-stOffset); end = addDays(start, 6)
+    var s = start.split('-'), e = end.split('-')
+    label = Number(s[1]) + '月' + Number(s[2]) + '日 ~ ' + Number(e[1]) + '月' + Number(e[2]) + '日'
+  } else {
+    var mr = monthRange(-stOffset); start = mr.start; end = mr.end; label = mr.label
+  }
+  document.getElementById('range-label').textContent = label + (stOffset > 0 ? '（往前 ' + stOffset + '）' : '')
+  var inRange = records.filter(function (r) { return r.date >= start && r.date <= end })
+  var t = totals(inRange)
+  document.getElementById('st-income').textContent = fmtMoney(t.income)
+  document.getElementById('st-expense').textContent = fmtMoney(t.expense)
+  document.getElementById('st-net').textContent = fmtMoney(t.net)
+  var initial = getInitial()
+  document.getElementById('st-balance').textContent = initial === null ? '未设置' : '¥ ' + fmtMoney(balance())
+
+  var map = {}
+  inRange.forEach(function (r) {
+    if (!map[r.date]) map[r.date] = []
+    map[r.date].push(r)
+  })
+  var dates = Object.keys(map).sort().reverse()
+  var box = document.getElementById('st-days')
+  if (!dates.length) {
+    box.innerHTML = '<div class="card"><div class="empty">这个周期里没有记录</div></div>'
+    return
+  }
+  var html = ''
+  for (var i = 0; i < dates.length; i++) {
+    var d = dates[i], dayList = map[d]
+    var dt = totals(dayList)
+    var rows = ''
+    for (var j = 0; j < dayList.length; j++) {
+      var r = dayList[j]
+      rows += '<div class="record"><div class="record-note">' + esc(r.note) + '</div>' +
+        '<div class="record-amt ' + (r.type === 'income' ? 'amt-in' : 'amt-out') + '">' + (r.type === 'income' ? '+' : '-') + r.amount + '</div>' +
+        '<div class="record-del" onclick="delRecordStats(\'' + r.id + '\')">×</div></div>'
+    }
+    var sub = ''
+    if (dt.income > 0) sub += '<span class="amt-in">收 ' + dt.income + '</span>'
+    if (dt.expense > 0) sub += '<span class="amt-out">支 ' + dt.expense + '</span>'
+    html += '<div class="card"><div class="day-head"><div class="day-title">' + d + ' ' + weekdayOf(d) + '<span class="day-add" onclick="addOnDay(\'' + d + '\')">＋ 补记</span></div>' +
+      '<div class="day-sub">' + sub + '</div></div>' + rows + '</div>'
+  }
+  box.innerHTML = html
+}
+function delRecordStats(id) {
+  if (confirm('删除这笔记录？')) { removeRecord(id); renderStats() }
+}
+
+// 跳到某一天补记
+function addOnDay(date) {
+  document.getElementById('f-date').value = date
+  switchTab('index')
+  var p = date.split('-')
+  toast('正在补记 ' + Number(p[1]) + ' 月 ' + Number(p[2]) + ' 日的账')
+}
+
+// ================= 设置页 =================
+function renderSettings() {
+  var initial = getInitial()
+  document.getElementById('set-amount').textContent = initial === null ? '还没设置' : '¥ ' + fmtMoney(initial)
+  document.getElementById('set-amount').className = 'amount-display' + (initial === null ? ' amount-none' : '')
+  document.getElementById('set-edit-btn').textContent = initial === null ? '设置初始金额' : '修改初始金额'
+  document.getElementById('set-desc').textContent = '数据只保存在这台设备的浏览器里（共 ' + getRecords().length + ' 笔记录）。' + backupStatusText() + '清理浏览器缓存或删除后无法找回，务必定期备份。'
+}
+function backupStatusText() {
+  var d = daysSinceBackup()
+  if (d === -1) return '⚠️ 你还没有备份过。'
+  if (d === 0) return '上次备份：今天。'
+  return '上次备份：' + d + ' 天前' + (d >= 7 ? '（该备份了）' : '') + '。'
+}
+function startEdit() {
+  document.getElementById('set-view').style.display = 'none'
+  document.getElementById('set-edit').style.display = 'block'
+  var v = getInitial()
+  document.getElementById('set-input').value = v === null ? '' : v
+}
+function cancelEdit() {
+  document.getElementById('set-edit').style.display = 'none'
+  document.getElementById('set-view').style.display = 'block'
+}
+function confirmEdit() {
+  var v = parseFloat(document.getElementById('set-input').value)
+  if (isNaN(v) || v < 0) { toast('请输入有效的金额'); return }
+  localStorage.setItem(K_INITIAL, String(Math.round(v * 100) / 100))
+  cancelEdit(); toast('已保存 ✓'); renderSettings(); renderIndex()
+}
+function exportData() {
+  var data = JSON.stringify({ initialAmount: getInitial() || 0, records: getRecords() }, null, 2)
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(data).then(function () { markBackup(); toast('已复制，去备忘录粘贴保存') }, function () { fallbackCopy(data) })
+  } else { fallbackCopy(data) }
+}
+// ---------- 备份提醒 ----------
+var K_LAST_BACKUP = 'ledger_last_backup'
+function getLastBackup() { var v = localStorage.getItem(K_LAST_BACKUP); return v ? parseInt(v, 10) : 0 }
+function markBackup() {
+  localStorage.setItem(K_LAST_BACKUP, String(Date.now()))
+  document.getElementById('backup-banner').style.display = 'none'
+}
+function daysSinceBackup() {
+  var t = getLastBackup()
+  if (!t) return -1
+  return Math.floor((Date.now() - t) / 86400000)
+}
+function closeBackupBanner() { document.getElementById('backup-banner').style.display = 'none' }
+function checkBackupBanner() {
+  var el = document.getElementById('backup-banner')
+  if (!el) return
+  if (getRecords().length === 0) { el.style.display = 'none'; return }
+  var d = daysSinceBackup()
+  var txt = document.getElementById('backup-banner-text')
+  if (d === -1) { txt.textContent = '你还没备份过，'; el.style.display = 'block' }
+  else if (d >= 7) { txt.textContent = '已经 ' + d + ' 天没备份了，'; el.style.display = 'block' }
+  else { el.style.display = 'none' }
+}
+function downloadBackup() {
+  var data = JSON.stringify({ initialAmount: getInitial() || 0, records: getRecords() }, null, 2)
+  try {
+    var blob = new Blob([data], { type: 'application/json' })
+    var url = URL.createObjectURL(blob)
+    var a = document.createElement('a')
+    a.href = url
+    a.download = '小账本备份-' + todayStr() + '.json'
+    document.body.appendChild(a); a.click()
+    document.body.removeChild(a)
+    setTimeout(function () { URL.revokeObjectURL(url) }, 3000)
+    markBackup()
+    toast('已下载，去「文件」App 保存好')
+  } catch (e) { fallbackCopy(data) }
+}
+function showImport() {
+  document.getElementById('import-view').style.display = 'block'
+}
+function cancelImport() {
+  document.getElementById('import-view').style.display = 'none'
+  document.getElementById('import-input').value = ''
+}
+function confirmImport() {
+  var txt = document.getElementById('import-input').value.trim()
+  if (!txt) { toast('请先粘贴备份内容'); return }
+  var obj
+  try { obj = JSON.parse(txt) } catch (e) { toast('内容不是有效备份，检查是否复制完整'); return }
+  if (!obj || !(obj.records instanceof Array)) { toast('备份格式不对，缺记录数据'); return }
+  if (!confirm('将恢复 ' + obj.records.length + ' 笔记录，并覆盖当前数据。确定继续？')) return
+  saveRecords(obj.records)
+  if (typeof obj.initialAmount === 'number' && obj.initialAmount >= 0) {
+    localStorage.setItem(K_INITIAL, String(obj.initialAmount))
+  }
+  cancelImport()
+  toast('恢复成功 ✓')
+  renderSettings(); renderIndex()
+}
+function fallbackCopy(data) {
+  var ta = document.createElement('textarea'); ta.value = data; ta.style.position = 'fixed'; ta.style.opacity = '0'
+  document.body.appendChild(ta); ta.select()
+  try { document.execCommand('copy'); toast('已复制，去备忘录粘贴保存') } catch (e) { toast('复制失败，请手动导出') }
+  document.body.removeChild(ta)
+}
+function clearAllData() {
+  if (confirm('清空所有数据？\n所有记账记录和初始金额都会被删除，无法恢复。建议先导出备份。')) {
+    clearStore(); toast('已清空'); renderSettings(); renderIndex()
+  }
+}
+
+renderIndex(); renderChips()
+</script>
+</body>
+</html>
